@@ -1,0 +1,68 @@
+name: Restore fork owner guard
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore-fork-guard:
+    # Keep this at job level so no runner is allocated in other owners' repositories.
+    if: github.repository_owner == 'ipevel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out main branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+
+      - name: Restore fork owner acceptance in workflow policy test
+        id: patch
+        run: |
+          set -euo pipefail
+
+          file='tests/workflow-policy.test.ts'
+          upstream_owner="'newbietan'"
+          fork_owner="'(newbietan|ipevel)'"
+
+          if grep -qF -- "$fork_owner" "$file"; then
+            echo "Fork owner acceptance already present in $file, no commit required."
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! grep -qF -- "$upstream_owner" "$file"; then
+            echo "::error title=Fork guard restore failed::Owner guard line not found in $file"
+            exit 1
+          fi
+
+          sed -i "/ownerGuards/s#${upstream_owner}#${fork_owner}#" "$file"
+
+          if ! grep -qF -- "$fork_owner" "$file"; then
+            echo "::error title=Fork guard restore failed::Edit verification failed for $file"
+            exit 1
+          fi
+
+          if grep -qF -- "$upstream_owner" "$file"; then
+            echo "::error title=Fork guard restore failed::Owner guard line still present in $file"
+            exit 1
+          fi
+
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          echo "Restored fork owner acceptance in $file."
+
+      - name: Commit and push the restored guard
+        if: steps.patch.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/workflow-policy.test.ts
+          git commit -m 'Accept fork repository owner in workflow policy guard test'
+          git push origin main
