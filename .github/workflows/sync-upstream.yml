@@ -98,17 +98,16 @@ jobs:
 
           # 由 GITHUB_TOKEN 发起的 push 不会再次触发 workflow 运行，merge-upstream 写入的提交
           # 因此不会自动启动 deploy.yml；同步真正产生变更后必须显式派发一次部署。
-          case "$merge_type" in
-            fast-forward|merge)
-              if gh workflow run deploy.yml --ref main; then
-                echo "已派发部署工作流：deploy.yml（ref=main）"
-                echo "- 部署：已派发 \`deploy.yml\`（ref: \`main\`）" >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "::warning::部署派发失败：本次同步已成功，但 deploy.yml 未能派发，请手动运行部署工作流。"
-                echo "- 部署：派发 \`deploy.yml\` 失败，请手动运行" >> "$GITHUB_STEP_SUMMARY"
-              fi
-              ;;
-            *)
-              echo "- 部署：本次无上游更新（merge_type=${merge_type}），未派发部署" >> "$GITHUB_STEP_SUMMARY"
-              ;;
-          esac
+          # 只要存在上游变更就派发部署，不对 merge_type 做取值白名单：
+          # 未来新增的合并方式同样需要触发部署，避免再次漏部署。
+          if [[ "$merge_type" != "none" ]]; then
+            if gh workflow run deploy.yml --ref main; then
+              echo "已派发部署工作流：deploy.yml（ref=main）"
+              echo "- 部署：已派发 \`deploy.yml\`（ref: \`main\`）" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::warning::部署派发失败：本次同步已成功，但 deploy.yml 未能派发，请手动运行部署工作流。"
+              echo "- 部署：派发 \`deploy.yml\` 失败，请手动运行" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "- 部署：本次无上游更新，未派发部署" >> "$GITHUB_STEP_SUMMARY"
+          fi
