@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  # gh workflow run 需要 actions: write 才能显式派发部署工作流。
+  actions: write
 
 concurrency:
   group: sync-upstream-main
@@ -93,3 +95,20 @@ jobs:
               echo "- ${detail}"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # 由 GITHUB_TOKEN 发起的 push 不会再次触发 workflow 运行，merge-upstream 写入的提交
+          # 因此不会自动启动 deploy.yml；同步真正产生变更后必须显式派发一次部署。
+          case "$merge_type" in
+            fast-forward|merge)
+              if gh workflow run deploy.yml --ref main; then
+                echo "已派发部署工作流：deploy.yml（ref=main）"
+                echo "- 部署：已派发 \`deploy.yml\`（ref: \`main\`）" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::warning::部署派发失败：本次同步已成功，但 deploy.yml 未能派发，请手动运行部署工作流。"
+                echo "- 部署：派发 \`deploy.yml\` 失败，请手动运行" >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
+            *)
+              echo "- 部署：本次无上游更新（merge_type=${merge_type}），未派发部署" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
