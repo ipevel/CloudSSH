@@ -28,7 +28,10 @@ jobs:
     steps:
       - name: Sync main branch from upstream
         env:
-          GH_TOKEN: ${{ github.token }}
+          # merge-upstream 在服务端写入 .github/workflows/ 下的文件；GITHUB_TOKEN
+          # 属于 GitHub App 身份，即使 permissions 声明也无法获得 workflows 写权限，
+          # 故改用具备 workflow scope 的仓库 secret。
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
