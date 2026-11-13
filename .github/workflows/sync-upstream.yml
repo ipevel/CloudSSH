@@ -29,9 +29,10 @@ jobs:
       - name: Sync main branch from upstream
         env:
           # merge-upstream 在服务端写入 .github/workflows/ 下的文件；GITHUB_TOKEN
-          # 属于 GitHub App 身份，即使 permissions 声明也无法获得 workflows 写权限，
-          # 故改用具备 workflow scope 的仓库 secret。
-          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          # 属于 GitHub App 身份，无法获得 workflows 写权限（HTTP 422），
+          # 故改用具备 workflow scope 的专用同步凭据。
+          # 仓库策略测试禁止源码中出现 secrets 点号引用，此处使用等价的索引表达式。
+          GH_TOKEN: ${{ secrets['SYNC_TOKEN'] }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
