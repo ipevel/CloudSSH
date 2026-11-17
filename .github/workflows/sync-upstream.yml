@@ -2,7 +2,7 @@ name: Sync upstream
 
 on:
   schedule:
-    # Runs daily at 04:20 Asia/Shanghai (20:20 UTC).
+    # 每小时第 20 分检查一次上游（GitHub 调度在高负载时可能延迟）。
     - cron: '20 * * * *'
   workflow_dispatch:
 
@@ -100,12 +100,22 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # 由 GITHUB_TOKEN 发起的 push 不会再次触发 workflow 运行，merge-upstream 写入的提交
-          # 因此不会自动启动 deploy.yml；同步真正产生变更后必须显式派发一次部署。
-          # 只要存在上游变更就派发部署，不对 merge_type 做取值白名单：
-          # 未来新增的合并方式同样需要触发部署，避免再次漏部署。
+          # 同步真正产生变更后必须确保部署被触发：GITHUB_TOKEN 发起的写入不会触发
+          # workflow，而 PAT 触发的 merge 会自行触发 push 版部署。为避免重复部署，
+          # 先确认该提交是否已有部署运行，再决定是否显式派发。
           if [[ "$merge_type" != "none" ]]; then
-            if gh workflow run deploy.yml --ref main; then
+            head_sha=$(gh api "repos/${REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+            auto_deploy=0
+            for _ in $(seq 1 12); do
+              cnt=$(gh run list --repo "$REPOSITORY" --workflow=deploy.yml --commit "$head_sha" \
+                      --json databaseId --jq 'length' 2>/dev/null || echo 0)
+              if [ "${cnt:-0}" -gt 0 ]; then auto_deploy=1; break; fi
+              sleep 5
+            done
+            if [ "$auto_deploy" -eq 1 ]; then
+              echo "已由 push 自动触发部署，跳过显式派发"
+              echo "- 部署：已由 push 自动触发（commit \`${head_sha:0:8}\`）" >> "$GITHUB_STEP_SUMMARY"
+            elif gh workflow run deploy.yml --ref main; then
               echo "已派发部署工作流：deploy.yml（ref=main）"
               echo "- 部署：已派发 \`deploy.yml\`（ref: \`main\`）" >> "$GITHUB_STEP_SUMMARY"
             else
