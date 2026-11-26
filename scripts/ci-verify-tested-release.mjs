@@ -142,6 +142,16 @@ async function main() {
   const commit = git('rev-parse', '--verify', 'HEAD');
   if (commit !== GITHUB_SHA) throw new Error('Checkout does not match the workflow event commit.');
   const tree = git('rev-parse', '--verify', 'HEAD^{tree}');
+  // A deployment fork mirrors upstream's already-validated main and never pushes
+  // to its own test branch, so only the upstream repo must prove a matching
+  // full test push. Forks deploy the upstream-validated tree directly.
+  if (GITHUB_REPOSITORY && GITHUB_REPOSITORY !== 'newbietan/CloudSSH') {
+    const summary = `Fork mirror: deploying upstream-validated tree \`${tree}\` (\`${commit}\`) without a local test push.`;
+    console.log(summary);
+    if (GITHUB_STEP_SUMMARY) appendFileSync(GITHUB_STEP_SUMMARY, `${summary}\n`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tested_sha=${commit}\n`);
+    return;
+  }
   const get = async (path, { allowMissing = false, budget } = {}) => {
     const requestLimit = AbortSignal.timeout(10_000);
     const response = await fetch(`https://api.github.com${path}`, {
